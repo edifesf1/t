@@ -19,7 +19,7 @@ video{object-fit:contain}
 </head>
 <body>
 <div id="area">
-  <video id="video" controls autoplay muted playsinline webkit-playsinline></video>
+  <video id="video" autoplay muted playsinline webkit-playsinline></video>
   <iframe id="frame" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen style="display:none"></iframe>
   <div id="estado">Carregando transmissão...</div>
 </div>
@@ -86,6 +86,7 @@ video{object-fit:contain}
     setTimeout(() => { if (frame.style.display === 'block') mensagem('', false); }, 5000);
   }
   function abrirHls(url) {
+    video.controls = false;
     video.style.display = 'block';
     frame.style.display = 'none';
     mensagem('Conectando ao sinal ao vivo...');
