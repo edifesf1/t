@@ -15,22 +15,11 @@ video{object-fit:contain}
 #estado{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;padding:20px;background:#000c;color:#fff;font-size:14px;z-index:2;pointer-events:none}
 #estado.oculto{display:none}
 #barra,#acoes{display:none}
-  video::-webkit-media-controls {
-    display: none !important;
-}
-
-video::-webkit-media-controls-enclosure {
-    display: none !important;
-}
-
-video::-webkit-media-controls-panel {
-    display: none !important;
-}
 </style>
 </head>
 <body>
 <div id="area">
-  <video id="video" autoplay muted playsinline webkit-playsinline></video>
+  <video id="video" controls autoplay muted playsinline webkit-playsinline></video>
   <iframe id="frame" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen style="display:none"></iframe>
   <div id="estado">Carregando transmissão...</div>
 </div>
@@ -97,12 +86,6 @@ video::-webkit-media-controls-panel {
     setTimeout(() => { if (frame.style.display === 'block') mensagem('', false); }, 5000);
   }
   function abrirHls(url) {
-    video.controls = false;
-    video.removeAttribute('controls');
-
-    video.setAttribute('playsinline', '');
-    video.setAttribute('webkit-playsinline', '');
-    
     video.style.display = 'block';
     frame.style.display = 'none';
     mensagem('Conectando ao sinal ao vivo...');
