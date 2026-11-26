@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Player ao Vivo</title>
+<script src="https://cdn.jsdelivr.net/npm/hls.js@1.6.15/dist/hls.min.js"></script>
+<style>
+*{box-sizing:border-box}
+html,body{margin:0;width:100%;height:100%;min-height:100%;background:#000;color:#fff;font-family:Arial,sans-serif;overflow:hidden}
+body{display:block}
+#area{position:fixed;inset:0;width:100vw;height:100dvh;background:#000;overflow:hidden}
+video,iframe{position:absolute;inset:0;width:100%;height:100%;border:0;background:#000}
+video{object-fit:contain}
+#estado{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;padding:20px;background:#000c;color:#fff;font-size:14px;z-index:2;pointer-events:none}
+#estado.oculto{display:none}
+#barra,#acoes{display:none}
+</style>
+</head>
+<body>
+<div id="area">
+  <video id="video" controls autoplay muted playsinline webkit-playsinline></video>
+  <iframe id="frame" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen style="display:none"></iframe>
+  <div id="estado">Carregando transmissão...</div>
+</div>
+<div id="barra">
+  <input id="url" type="url" placeholder="Cole aqui o link .m3u8, YouTube ou player incorporado">
+  <button id="abrir">ABRIR</button>
+</div>
+<div id="acoes">
+  <button id="som">ATIVAR SOM</button>
+  <button id="tela">TELA CHEIA</button>
+  <button id="recarregar">RECARREGAR</button>
+</div>
+<script>
+(() => {
+  const video = document.getElementById('video');
+  const frame = document.getElementById('frame');
+  const area = document.getElementById('area');
+  const estado = document.getElementById('estado');
+  const campo = document.getElementById('url');
+  let hls = null, atual = '', tentativas = 0, timer = null;
+
+  function mensagem(txt, mostrar=true) {
+    estado.textContent = txt;
+    estado.classList.toggle('oculto', !mostrar);
+  }
+  function limpar() {
+    if (timer) clearTimeout(timer);
+    timer = null;
+    if (hls) { try { hls.destroy(); } catch(e) {} hls = null; }
+    video.pause();
+    video.removeAttribute('src');
+    video.load();
+    frame.src = 'about:blank';
+    frame.style.display = 'none';
+    video.style.display = 'block';
+  }
+  function youtubeEmbed(url) {
+    let m = url.match(/[?&]v=([\w-]{6,})/) ||
+            url.match(/youtu\.be\/([\w-]{6,})/) ||
+            url.match(/youtube\.com\/(?:live|embed)\/([\w-]{6,})/);
+    return m ? `https://www.youtube.com/embed/${m[1]}?autoplay=1&mute=1&playsinline=1&rel=0` : url;
+  }
+  function dailyEmbed(url) {
+    let m = url.match(/(?:video\/|dai\.ly\/)(x[a-z0-9]+)/i);
+    return m ? `https://www.dailymotion.com/embed/video/${m[1]}?autoplay=1&mute=1&controls=1` : url;
+  }
+  function abrir() {
+    atual = campo.value.trim();
+    if (!atual) { mensagem('Informe o link da transmissão.'); return; }
+    limpar(); tentativas = 0;
+    const u = atual.toLowerCase();
+    if (/youtube\.com|youtu\.be/.test(u)) return abrirFrame(youtubeEmbed(atual));
+    if (/dailymotion\.com|dai\.ly/.test(u)) return abrirFrame(dailyEmbed(atual));
+    if (/\.m3u8(?:$|[?#])/.test(u)) return abrirHls(atual);
+    if (/^https?:\/\//i.test(atual)) return abrirFrame(atual);
+    mensagem('Link não reconhecido. Use um endereço HTTP ou HTTPS.');
+  }
+  function abrirFrame(url) {
+    video.style.display = 'none';
+    frame.style.display = 'block';
+    mensagem('Carregando transmissão...');
+    frame.onload = () => mensagem('', false);
+    frame.src = url;
+    setTimeout(() => { if (frame.style.display === 'block') mensagem('', false); }, 5000);
+  }
+  function abrirHls(url) {
+    video.style.display = 'block';
+    frame.style.display = 'none';
+    mensagem('Conectando ao sinal ao vivo...');
+    const nativo = video.canPlayType('application/vnd.apple.mpegurl');
+    if (nativo) {
+      const ok = () => { mensagem('', false); video.play().catch(()=>{}); };
+      const erro = () => tentarNovamente(url);
+      video.addEventListener('loadeddata', ok, {once:true});
+      video.addEventListener('canplay', ok, {once:true});
+      video.addEventListener('error', erro, {once:true});
+      video.src = url;
+      video.play().catch(()=>{});
+      timer = setTimeout(() => { if (video.readyState < 2) tentarNovamente(url); }, 12000);
+      return;
+    }
+    if (window.Hls && Hls.isSupported()) {
+      hls = new Hls({lowLatencyMode:true, enableWorker:true, backBufferLength:30,
+        manifestLoadingTimeOut:10000, manifestLoadingMaxRetry:0,
+        levelLoadingTimeOut:10000, levelLoadingMaxRetry:0,
+        fragLoadingTimeOut:15000, fragLoadingMaxRetry:0});
+      hls.on(Hls.Events.MANIFEST_PARSED, () => {
+        mensagem('', false);
+        video.play().catch(()=>{});
+      });
+      hls.on(Hls.Events.ERROR, (ev, data) => {
+        if (data.fatal) tentarNovamente(url);
+      });
+      hls.loadSource(url);
+      hls.attachMedia(video);
+      timer = setTimeout(() => {
+        if (video.readyState < 2) tentarNovamente(url);
+      }, 15000);
+      return;
+    }
+    mensagem('Este navegador não oferece suporte a HLS.');
+  }
+  function tentarNovamente(url) {
+    if (timer) clearTimeout(timer);
+    if (hls) { try { hls.destroy(); } catch(e) {} hls = null; }
+    tentativas++;
+    if (tentativas > 5) {
+      mensagem('Não foi possível carregar o sinal. Verifique o link e tente novamente.');
+      return;
+    }
+    mensagem(`Sinal instável. Reconectando (${tentativas}/5)...`);
+    timer = setTimeout(() => abrirHls(url), Math.min(1500 * tentativas, 7000));
+  }
+  document.getElementById('abrir').addEventListener('click', abrir);
+  campo.addEventListener('keydown', e => { if (e.key === 'Enter') abrir(); });
+  document.getElementById('som').addEventListener('click', () => {
+    if (video.style.display !== 'none') {
+      video.muted = !video.muted;
+      document.getElementById('som').textContent = video.muted ? 'ATIVAR SOM' : 'MUTAR';
+      if (!video.muted) video.play().catch(()=>{});
+    } else {
+      // O som de players incorporados é controlado pelo próprio player.
+      mensagem('Use o controle de volume do player incorporado.', true);
+      setTimeout(() => mensagem('', false), 2500);
+    }
+  });
+  document.getElementById('tela').addEventListener('click', async () => {
+    try {
+      if (!document.fullscreenElement) await area.requestFullscreen();
+      else await document.exitFullscreen();
+    } catch(e) {}
+  });
+  document.getElementById('recarregar').addEventListener('click', () => {
+    if (atual) { campo.value = atual; abrir(); }
+  });
+  // O endereço da transmissão vem depois do # na URL do GitHub Pages.
+  function carregarDoHash() {
+    const link = decodeURIComponent(window.location.hash.slice(1).trim());
+    if (!link) {
+      mensagem('Adicione o endereço da transmissão depois do # na URL desta página.');
+      return;
+    }
+    campo.value = link;
+    abrir();
+  }
+  window.addEventListener('hashchange', carregarDoHash);
+  window.addEventListener('online', () => { if (atual && /\.m3u8(?:$|[?#])/i.test(atual)) abrir(); });
+  carregarDoHash();
+})();
+</script>
+</body>
+</html>
